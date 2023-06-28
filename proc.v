@@ -1,8 +1,13 @@
-module proc (DIN, Resetn, Clock, Run, Done, BusWires); 
+module proc (DIN, Resetn, Clock, Run, Done, BusWires);
+          // Tstep_Q_debug,reg_A_debug,reg_G_debug,reg_IR_debug,reg_0_debug,reg_1_debug); 
+
+
+
+
 input wire [8:0] DIN;
 input wire Resetn, Clock, Run;
 output reg Done;
-output [8:0] BusWires;
+output wire [8:0] BusWires;
 
 // clk cycles
 parameter T0 = 2'b00,
@@ -14,7 +19,8 @@ parameter T0 = 2'b00,
 parameter MV = 3'b000,
 			 MVI = 3'b001,
 			 ADD = 3'b010,
-			 SUB = 3'b011;
+			 SUB = 3'b011,
+			 SMULT = 3'b100;	// special command 
 				
 // parameter wires
 wire [2:0] I;	// 3bit instruction
@@ -24,23 +30,30 @@ wire [7:0] Yreg;	// 2nd reg from the input
 wire [8:0] Aout_bus;	// output of reg A
 wire [8:0] Gout_bus;	// output of reg G
 wire [8:0] R0, R1, R2, R3, R4, R5, R6, R7;	// register R0-R7 inputs 
-wire [8:0] AddSubOut;	// add/subtract output 
+wire [8:0] ALUout;	// add/subtract output 
 
 // parameter regs
 reg [1:0] Tstep_Q;	// cs
 reg [1:0] Tstep_D;	// ns 
 reg IRin, Gin, Ain;
-reg AddSub;	// enable regs
+reg [1:0] AddSub;	// enable regs
 reg Gout, DINout;		// enable regs 
 reg [7:0] Rin;		// R0-R7 input enable
 reg [7:0] Rout;	// R0-R7 output enable 
+
+
+
+
 
 // decode input to IR
 assign I = IR[8:6];
 dec3to8 decX (IR[5:3], 1'b1, Xreg); 
 dec3to8 decY (IR[2:0], 1'b1, Yreg);
 
-// Control FSM 
+// Control FSM
+
+// remember to change  in case Smult will be of 3 cycles!!!
+
 always @(*)
 	begin 
 		case (Tstep_Q)
@@ -56,7 +69,10 @@ always @(*)
 				else
 					Tstep_D <= T2;
 			end
-			T2: begin 
+			T2: begin
+				if (Done)
+					Tstep_D <= T0;  //Smult operation
+				else
 				Tstep_D <= T3;
 			end 
 			T3: begin 
@@ -67,6 +83,9 @@ always @(*)
 	end
 
 // Control FSM 
+
+
+// remember to change  in case Smult will be of 3 cycles!!!
 always @(*)
 	begin 
 		
@@ -108,6 +127,12 @@ always @(*)
 							Rout <= Xreg;	// read reg X
 							Ain <= 1'b1;	// enable reg A
 						end 
+						SMULT:
+						begin 
+							Rout <= Xreg;	// read reg X
+							Gin <= 1'b1;	// enable reg A
+							AddSub <= 2'b10; //enable smult operation in alu
+						end 
 						endcase		
 			T2:	// second cycle
 				case(I)
@@ -115,13 +140,19 @@ always @(*)
 						begin 
 							Rout <= Yreg;	// read from reg Y
 							Gin <= 1'b1;	// enable reg G
-							AddSub <= 1'b1;	// selector for add
+							AddSub <= 2'b01;	// selector for add
 						end 
 						SUB:
 						begin 
 							Rout <= Yreg;	// read from reg Y
 							Gin <= 1'b1;	// enable reg G in
-							AddSub <= 1'b0;	// selector for subtract
+							AddSub <= 2'b00;	// selector for subtract
+						end 
+						SMULT:
+						begin 
+							Gout <= 1'b1;
+							Rin <= Yreg;	// enable selector
+							Done <= 1'b1;
 						end 
 				endcase				
 			T3: 
@@ -137,7 +168,7 @@ always @(*)
 							Gout <= 1'b1;
 							Rin <= Xreg;
 							Done <= 1'b1;
-						end
+						end 
 				endcase		
 		endcase
 	end
@@ -146,7 +177,7 @@ always @(*)
 always @(posedge Clock, negedge Resetn)
 	begin 
 		if (!Resetn)
-			Tstep_Q <= 2'b0;
+			Tstep_Q <= T0;
 		else	
 			Tstep_Q <= Tstep_D;
 	end
@@ -162,15 +193,33 @@ regn reg_6 (BusWires, Rin[6], Clock, Resetn,  R6);
 regn reg_7 (BusWires, Rin[7], Clock, Resetn,  R7);
 
 regn reg_A (BusWires, Ain, Clock, Resetn, Aout_bus);
-regn reg_G (AddSubOut, Gin, Clock, Resetn, Gout_bus);
-regn reg_IR (DIN, Run, Clock, Resetn, IR);
+regn reg_G (ALUout, Gin, Clock, Resetn, Gout_bus);
+regn reg_IR (DIN, IRin, Clock, Resetn, IR);
+
+
+
+////added for debug:
+//output wire [1:0] Tstep_Q_debug;	// cs
+//output wire [8:0] reg_A_debug, reg_G_debug, reg_IR_debug;
+//output wire [8:0] reg_0_debug, reg_1_debug;
+//
+//assign Tstep_Q_debug = Tstep_Q;
+//assign reg_A_debug = Aout_bus;
+//assign reg_G_debug = Gout_bus;
+//assign reg_IR_debug = IR;
+//assign reg_0_debug = R0;
+//assign reg_1_debug = R1;
+
+
+
+
 
 // mux instantiation 
 mux10to1 mux10to1_inst(.R0(R0), .R1(R1), .R2(R2), .R3(R3),
  .R4(R4), .R5(R5), .R6(R6), .R7(R7), .DIN(DIN), .Gout_bus(Gout_bus),
- .Rout(Rout), .Gout(Gout), .DINout(DINout), .muxOut(BusWires));	
+ .Rout(Rout), .Gout(Gout), .DINout(DINout), .mux_reg(BusWires));	
 
- //... define the bus 
-assign AddSubOut = (AddSub) ? Aout_bus + BusWires : Aout_bus - BusWires;
-
+// ALU for Add Sub and SMULT
+ALU ALU_inst1(.ALUin1(Aout_bus), .ALUin2(BusWires), .sel(AddSub), .ALUout(ALUout));
+ 
 endmodule

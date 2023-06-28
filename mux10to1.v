@@ -10,11 +10,13 @@ module mux10to1 (
 	input wire [8:0] DIN,
 	input wire [8:0] Gout_bus,
 	input wire [7:0] Rout,
-	input wire Gout, DINout,
-	output wire [8:0] muxOut
+	input wire Gout, 
+	input wire DINout,
+	output reg [8:0] mux_reg //what goes out. the bus
 	);
 	
-	reg [8:0] mux_reg;
+	reg [9:0] mux_sel;
+	// assign mux_sel={Rout,Gout,DINout};
 	
 	always @(*)
 	begin 
@@ -40,7 +42,6 @@ module mux10to1 (
 			mux_reg <= R7;
 		end 
 	end
-	
-	assign muxOut = mux_reg;
+
 
 endmodule

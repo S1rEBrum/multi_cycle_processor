@@ -11,3 +11,4 @@ always @(posedge Clock or negedge Resetn)
 	else if (Rin)
 		Q <= R;
 endmodule
+
